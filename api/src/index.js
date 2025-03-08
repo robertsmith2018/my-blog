@@ -1,4 +1,5 @@
 import "./env.js"
+import { authenticator } from "@otplib/preset-default"
 import { fastify } from "fastify"
 import fastifyStatic from "fastify-static"
 import fastifyCookie from "@fastify/cookie"
@@ -10,7 +11,7 @@ import { registerUser } from "./accounts/register.js"
 import { authorizeUser } from "./accounts/authorize.js"
 import { logUserIn } from "./accounts/logUserIn.js"
 import { logUserOut } from "./accounts/logUserOut.js"
-import { getUserFromCookies, changePassword } from "./accounts/user.js"
+import { getUserFromCookies, changePassword, register2FA, } from "./accounts/user.js"
 import { sendEmail, mailInit } from "./mail/index.js"
 import { createVerifyEmailLink, verifyEmailToken } from "./accounts/verify.js"
 import { createResetLink, validateResetEmail } from "./accounts/reset.js"
@@ -36,6 +37,13 @@ async function startApp() {
 
     app.register(fastifyStatic, {
       root: path.join(__dirname, "public"),
+    })
+
+    app.get("/api/user", {}, async (request, reply) => {
+      // Verify user login
+      const user = await getUserFromCookies(request, reply)
+      if (user) return reply.send({ data: { user } })
+      reply.send({})
     })
 
     app.post("/api/register", {}, async (request, reply) => {
@@ -206,6 +214,19 @@ async function startApp() {
         console.error(e)
         return reply.code(401).send()
       }
+    })
+
+    app.post("/api/2fa-register", {}, async (request, reply) => {
+      // Verify user login
+      const user = await getUserFromCookies(request, reply)
+      const { token, secret } = request.body
+      const isValid = authenticator.verify({ token, secret })
+      console.log("isValid", isValid)
+      if (user._id && isValid) {
+        await register2FA(user._id, secret)
+        reply.send("success")
+      }
+      reply.code(401).send()
     })
 
     app.get("/api/test", {}, async (request, reply) => {
